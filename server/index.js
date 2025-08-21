@@ -5,6 +5,8 @@ const userRoutes = require("./Routes/user.routes");
 const chatRoutes = require("./Routes/chatroute");
 const messageRoutes = require("./Routes/messageRoute");
 
+const { Server } = require("socket.io");
+
 const app = express();
 
 app.use(express.json());
@@ -18,7 +20,7 @@ app.use("/api/messages", messageRoutes);
 const port = process.env.PORT || 5000;
 const uri = process.env.ATLAS_URI;
 
-app.listen(port, (req, res) => {
+const expressserver = app.listen(port, (req, res) => {
     console.log(`Server running on ${port}`)
 })
 
@@ -27,3 +29,74 @@ mongoose.connect(uri, {
     useUnifiedTopology: true
 }).then(() => console.log("Mongo Db connected successfuly")).catch((error) => console.log("connection failed", error.message));
 
+const io = new Server(expressserver, { cors: "http://localhost:5173" });
+
+let onlineUsers = [];
+io.on("connection", (socket) => {
+    console.log("new connection", socket.id)
+    // listen to a connection
+    socket.on("addNewUser", (userId) => {
+        !onlineUsers.some(user => user.userId === userId) &&
+            onlineUsers.push({
+                userId,
+                socketId: socket.id,
+            });
+        console.log("online user", onlineUsers)
+        io.emit("getOnlineUsers", onlineUsers)
+    })
+
+    // add message 
+
+    socket.on("sendMessage", (message) => {
+        // message: { chatId, senderId, text, recipientId, ... }
+        if (message.isGroup && Array.isArray(message.groupMembers)) {
+            // Group message: notify all group members except sender
+            message.groupMembers.forEach(memberId => {
+                if (memberId !== message.senderId) {
+                    const user = onlineUsers.find(user => user.userId === memberId);
+                    if (user) {
+                        io.to(user.socketId).emit("getMessage", message);
+                        io.to(user.socketId).emit("getNotification", {
+                            senderId: message.senderId,
+                            chatId: message.chatId,
+                            isRead: false,
+                            date: new Date(),
+                            isGroup: true,
+                            groupName: message.groupName,
+                        });
+                    }
+                }
+            });
+        } else {
+            // 1-1 message
+            const user = onlineUsers.find(user => user.userId === message.recipientId)
+            if (user) {
+                io.to(user.socketId).emit("getMessage", message);
+                io.to(user.socketId).emit("getNotification", {
+                    senderId: message.senderId,
+                    chatId: message.chatId,
+                    isRead: false,
+                    date: new Date(),
+                });
+            }
+        }
+    })
+
+    // Group update events
+    socket.on("groupUpdated", ({ chat }) => {
+        io.emit("groupUpdated", { chat });
+    });
+    socket.on("groupDeleted", ({ chatId }) => {
+        io.emit("groupDeleted", { chatId });
+    });
+
+    socket.on("disconnect", () => {
+        onlineUsers = onlineUsers.filter((user) => user.socketId !== socket.id)
+
+        io.emit("getOnlineUsers", onlineUsers)
+
+
+    })
+});
+
+// io.listen(3000);

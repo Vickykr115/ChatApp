@@ -42,6 +42,16 @@ const Notification = () => {
     }
   };
 
+  // Fix: Mark all notifications as read for all chats, not just current chat
+  const handleMarkAllAsRead = () => {
+    const mNotifications = notification.map(n =>
+      !n.isRead ? { ...n, isRead: true } : n
+    );
+    // Directly update notification state via context
+    // If markAllNotificationsAsRead expects the new array, call it with mNotifications
+    markAllNotificationsAsRead(mNotifications);
+  };
+
   const open = Boolean(anchorEl);
 
   return (
@@ -63,7 +73,7 @@ const Notification = () => {
           <Stack direction="row" alignItems="center" justifyContent="space-between">
             <Typography variant="subtitle1" fontWeight={700}>Notifications</Typography>
             {!!notification?.length && (
-              <Button size="small" onClick={() => markAllNotificationsAsRead(notification)}>
+              <Button size="small" onClick={handleMarkAllAsRead}>
                 Mark all as read
               </Button>
             )}

@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useCallback } from "react";
 import { io } from "socket.io-client";
 
+
 export const ChatContext = createContext();
 
 export const ChatContextProvider = ({ children, user }) => {
@@ -27,7 +28,7 @@ export const ChatContextProvider = ({ children, user }) => {
 
     //initial socket
     useEffect(() => {
-        const newSocket = io("http://localhost:3000");
+        const newSocket = io("http://localhost:5000");
         setSocket(newSocket);
 
         return () => {
@@ -231,15 +232,9 @@ export const ChatContextProvider = ({ children, user }) => {
 
     //mark all messge as read
 
-    const markAllNotificationsAsRead = useCallback((notification) => {
-        if (!currentChat?._id) return;
-        const mNotifications = notification.map(n =>
-            n.chatId === currentChat._id && !n.isRead
-                ? { ...n, isRead: true }
-                : n
-        );
-        setNotification(mNotifications)
-    },[currentChat])
+    const markAllNotificationsAsRead = useCallback((newNotifications) => {
+        setNotification(newNotifications);
+    }, []);
 
     // read message as well as open chat
     const MarkNotificationAsRead = useCallback((n, userChats, user, notification) => {
