@@ -47,8 +47,6 @@ const Notification = () => {
     const mNotifications = notification.map(n =>
       !n.isRead ? { ...n, isRead: true } : n
     );
-    // Directly update notification state via context
-    // If markAllNotificationsAsRead expects the new array, call it with mNotifications
     markAllNotificationsAsRead(mNotifications);
   };
 

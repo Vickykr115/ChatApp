@@ -4,6 +4,7 @@ import { ChatContext } from "../../context/ChatContext";
 import { useFetchRecipentUser } from "../../hooks/useFetchRecipent";
 import { baseUrl } from "../../utils/service";
 import moment from "moment";
+import TypingIndicator from "./TypingIndicator";
 
 import {
   Box,
@@ -51,6 +52,8 @@ const ChatBox = () => {
     setCurrentChat,
     emitGroupUpdate,
     emitGroupDelete,
+    emitTyping,
+    emitStopTyping,
   } = useContext(ChatContext);
 
   const { recipientUser } = useFetchRecipentUser(currentChat, user);
@@ -58,9 +61,76 @@ const ChatBox = () => {
   const scroll = useRef();
   const isGroup = currentChat?.isGroup;
 
+  // Typing indicator state
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef(null);
+
   const [membersOpen, setMembersOpen] = useState(false);
   const [addMembersOpen, setAddMembersOpen] = useState(false);
   const [addingUserId, setAddingUserId] = useState(null);
+
+  // Typing detection functions
+  const handleTypingStart = useCallback(() => {
+    if (!isTyping && currentChat) {
+    
+      setIsTyping(true);
+      if (isGroup) {
+        emitTyping(currentChat._id, true, currentChat.members);
+      } else {
+        emitTyping(currentChat._id, false);
+      }
+    }
+  }, [isTyping, currentChat, isGroup, emitTyping]);
+
+  const handleTypingStop = useCallback(() => {
+    if (isTyping && currentChat) {
+      setIsTyping(false);
+      if (isGroup) {
+        emitStopTyping(currentChat._id, true, currentChat.members);
+      } else {
+        emitStopTyping(currentChat._id, false);
+      }
+    }
+  }, [isTyping, currentChat, isGroup, emitStopTyping]);
+
+  // Handle text input changes with typing detection
+  const handleTextChange = useCallback((e) => {
+    const value = e.target.value;
+    setTextMessage(value);
+
+    // Start typing if user is typing and not already marked as typing
+    if (value.length > 0) {
+      handleTypingStart();
+
+      // Clear existing timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      // Set timeout to stop typing after 2 seconds of inactivity
+      typingTimeoutRef.current = setTimeout(() => {
+        handleTypingStop();
+      }, 2000);
+    } else {
+      // Stop typing immediately if input is empty
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      handleTypingStop();
+    }
+  }, [handleTypingStart, handleTypingStop]);
+
+  // Clean up typing timeout on unmount or chat change
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      if (isTyping) {
+        handleTypingStop();
+      }
+    };
+  }, [currentChat, handleTypingStop]);
 
   useEffect(() => {
     scroll.current?.scrollIntoView({ behavior: "smooth" });
@@ -257,6 +327,9 @@ const ChatBox = () => {
           </Stack>
         </Box>
 
+        {/* Typing Indicator */}
+        <TypingIndicator currentChatId={currentChat?._id} />
+
         <Divider />
 
         {/* Composer */}
@@ -266,17 +339,36 @@ const ChatBox = () => {
             size="small"
             placeholder="Type a message..."
             value={textMessage}
-            onChange={(e) => setTextMessage(e.target.value)}
+            onChange={handleTextChange}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
+                // Stop typing when sending message
+                if (typingTimeoutRef.current) {
+                  clearTimeout(typingTimeoutRef.current);
+                }
+                handleTypingStop();
                 sendTextMessage(textMessage, user, setTextMessage, currentChat._id);
               }
+            }}
+            onBlur={() => {
+              // Stop typing when user leaves the input field
+              if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+              }
+              handleTypingStop();
             }}
           />
           <IconButton
             color="primary"
-            onClick={() => sendTextMessage(textMessage, user, setTextMessage, currentChat._id)}
+            onClick={() => {
+              // Stop typing when sending message
+              if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+              }
+              handleTypingStop();
+              sendTextMessage(textMessage, user, setTextMessage, currentChat._id);
+            }}
           >
             <SendIcon />
           </IconButton>
@@ -361,3 +453,4 @@ const ChatBox = () => {
 };
 
 export default ChatBox;
+ 

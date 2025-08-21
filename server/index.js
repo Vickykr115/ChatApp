@@ -29,7 +29,12 @@ mongoose.connect(uri, {
     useUnifiedTopology: true
 }).then(() => console.log("Mongo Db connected successfuly")).catch((error) => console.log("connection failed", error.message));
 
-const io = new Server(expressserver, { cors: "http://localhost:5173" });
+const io = new Server(expressserver, { 
+    cors: {
+        origin: "*", // Allow all origins for testing, restrict in production
+        methods: ["GET", "POST"]
+    }
+});
 
 let onlineUsers = [];
 io.on("connection", (socket) => {
@@ -89,6 +94,44 @@ io.on("connection", (socket) => {
     socket.on("groupDeleted", ({ chatId }) => {
         io.emit("groupDeleted", { chatId });
     });
+
+    // --- Add this block for typing indicator support ---
+    socket.on("typing", ({ chatId, userId, userName, isGroup, groupMembers, recipientId }) => {
+        if (isGroup && Array.isArray(groupMembers)) {
+            groupMembers.forEach(memberId => {
+                if (memberId !== userId) {
+                    const user = onlineUsers.find(u => u.userId === memberId);
+                    if (user) {
+                        io.to(user.socketId).emit("userTyping", { chatId, userId, userName, isGroup: true });
+                    }
+                }
+            });
+        } else if (recipientId) {
+            const user = onlineUsers.find(u => u.userId === recipientId);
+            if (user) {
+                io.to(user.socketId).emit("userTyping", { chatId, userId, userName, isGroup: false });
+            }
+        }
+    });
+
+    socket.on("stopTyping", ({ chatId, userId, isGroup, groupMembers, recipientId }) => {
+        if (isGroup && Array.isArray(groupMembers)) {
+            groupMembers.forEach(memberId => {
+                if (memberId !== userId) {
+                    const user = onlineUsers.find(u => u.userId === memberId);
+                    if (user) {
+                        io.to(user.socketId).emit("userStoppedTyping", { chatId, userId, isGroup: true });
+                    }
+                }
+            });
+        } else if (recipientId) {
+            const user = onlineUsers.find(u => u.userId === recipientId);
+            if (user) {
+                io.to(user.socketId).emit("userStoppedTyping", { chatId, userId, isGroup: false });
+            }
+        }
+    });
+    // --- End typing indicator block ---
 
     socket.on("disconnect", () => {
         onlineUsers = onlineUsers.filter((user) => user.socketId !== socket.id)

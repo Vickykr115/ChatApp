@@ -5,7 +5,6 @@ import { useEffect } from "react";
 import { useCallback } from "react";
 import { io } from "socket.io-client";
 
-
 export const ChatContext = createContext();
 
 export const ChatContextProvider = ({ children, user }) => {
@@ -23,8 +22,9 @@ export const ChatContextProvider = ({ children, user }) => {
     const [onlineUsers, setOnlineUsers] = useState([]);
     const [notification, setNotification] = useState([]);
     const [allUsers, setAllUsers]= useState([]);
+    const [typingUsers, setTypingUsers] = useState([]); // Array of {chatId, userId, userName}
 
-    console.log("Notification", notification)
+
 
     //initial socket
     useEffect(() => {
@@ -159,7 +159,9 @@ export const ChatContextProvider = ({ children, user }) => {
                 if (response.error) {
                     return setUserChatsError(response)
                 }
-                setUserChats(response)
+                // Sort chats by updatedAt descending
+                const sortedChats = [...response].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+                setUserChats(sortedChats)
             }
         }
 
@@ -232,9 +234,10 @@ export const ChatContextProvider = ({ children, user }) => {
 
     //mark all messge as read
 
-    const markAllNotificationsAsRead = useCallback((newNotifications) => {
-        setNotification(newNotifications);
-    }, []);
+    // Accepts the new notifications array and sets it directly
+    const markAllNotificationsAsRead = useCallback((mNotifications) => {
+        setNotification(mNotifications);
+    },[])
 
     // read message as well as open chat
     const MarkNotificationAsRead = useCallback((n, userChats, user, notification) => {
@@ -315,6 +318,82 @@ export const ChatContextProvider = ({ children, user }) => {
         };
     }, [socket, user && user._id]);
 
+    // Listen for typing events
+    useEffect(() => {
+        if (!socket) return;
+
+        socket.on("userTyping", ({ chatId, userId, userName, isGroup }) => {
+            // Only add to typingUsers if it's NOT the current user
+            if (userId === user?._id) return;
+            setTypingUsers(prev => {
+                const filtered = prev.filter(t => !(t.chatId === chatId && t.userId === userId));
+                return [...filtered, { chatId, userId, userName, isGroup }];
+            });
+        });
+
+        socket.on("userStoppedTyping", ({ chatId, userId, isGroup }) => {
+            // Only remove if it's NOT the current user
+            if (userId === user?._id) return;
+            setTypingUsers(prev => prev.filter(t => !(t.chatId === chatId && t.userId === userId)));
+        });
+
+        return () => {
+            socket.off("userTyping");
+            socket.off("userStoppedTyping");
+        };
+    }, [socket, user]);
+
+    // Typing indicator functions
+    const emitTyping = useCallback((chatId, isGroup = false, groupMembers = []) => {
+        if (!socket || !user) return;
+
+        // Do NOT add yourself to typingUsers locally (let others see you typing)
+        if (isGroup) {
+            socket.emit("typing", {
+                chatId,
+                userId: user._id,
+                userName: user.name,
+                isGroup: true,
+                groupMembers
+            });
+        } else {
+            const recipientId = currentChat?.members?.find(id => id !== user._id);
+            if (recipientId) {
+                socket.emit("typing", {
+                    chatId,
+                    userId: user._id,
+                    userName: user.name,
+                    isGroup: false,
+                    recipientId
+                });
+            }
+        }
+    }, [socket, user, currentChat]);
+
+    const emitStopTyping = useCallback((chatId, isGroup = false, groupMembers = []) => {
+        if (!socket || !user) return;
+
+        // Do NOT remove yourself from typingUsers locally (let others see you stopped typing)
+        if (isGroup) {
+            socket.emit("stopTyping", {
+                chatId,
+                userId: user._id,
+                isGroup: true,
+                groupMembers
+            });
+        } else {
+            const recipientId = currentChat?.members?.find(id => id !== user._id);
+            if (recipientId) {
+                socket.emit("stopTyping", {
+                    chatId,
+                    userId: user._id,
+                    isGroup: false,
+                    recipientId
+                });
+            }
+        }
+    }, [socket, user, currentChat]);
+
     // --- Add these helper functions for group actions ---
     const emitGroupUpdate = useCallback((chat) => {
         if (socket && chat) {
@@ -351,8 +430,14 @@ export const ChatContextProvider = ({ children, user }) => {
             markThisUserNotificationAsRead,
             emitGroupUpdate,
             emitGroupDelete,
+            typingUsers,
+            emitTyping,
+            emitStopTyping,
         }}>
             {children}
         </ChatContext.Provider>
     )
 }
+
+
+
