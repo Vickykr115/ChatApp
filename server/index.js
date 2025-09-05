@@ -13,6 +13,10 @@ app.use(express.json());
 app.use(cors());
 require("dotenv").config();
 
+app.get("/", (req, res)=>{
+    res.send("Welcome to our chat app...");
+})
+
 app.use("/api/users", userRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/messages", messageRoutes);
