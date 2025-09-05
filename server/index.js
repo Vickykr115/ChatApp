@@ -22,7 +22,10 @@ app.use("/api/chats", chatRoutes);
 app.use("/api/messages", messageRoutes);
 
 const port = process.env.PORT || 5000;
-const uri = process.env.ATLAS_URI;
+const uri = process.env.MONGO_URI || process.env.ATLAS_URI;
+
+console.log("Mongo URI Loaded:", uri ? "✅ Yes" : "❌ No");
+
 
 const expressserver = app.listen(port, (req, res) => {
     console.log(`Server running on ${port}`)
@@ -33,7 +36,6 @@ mongoose.connect(uri, {
     useUnifiedTopology: true,
     serverSelectionTimeoutMS: 10000,  // 10 seconds
       socketTimeoutMS: 45000,          // 45 seconds
-      keepAlive: true
 }).then(() => console.log("Mongo Db connected successfuly")).catch((error) => console.log("connection failed", error.message));
 
 const io = new Server(expressserver, { 
