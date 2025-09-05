@@ -30,7 +30,10 @@ const expressserver = app.listen(port, (req, res) => {
 
 mongoose.connect(uri, {
     useNewUrlParser: true,
-    useUnifiedTopology: true
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 10000,  // 10 seconds
+      socketTimeoutMS: 45000,          // 45 seconds
+      keepAlive: true
 }).then(() => console.log("Mongo Db connected successfuly")).catch((error) => console.log("connection failed", error.message));
 
 const io = new Server(expressserver, { 
